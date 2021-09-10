@@ -15,7 +15,7 @@ detector = LmDetector()
 # matplotlib.use("MacOSX")
 class UploadImage(Resource):
     def post(self):
-        print(request)
+
         file = Image.open(request.files['image'])
 
         if not file:
@@ -37,8 +37,6 @@ class UploadImage(Resource):
         result = detector.detect([image], conf_th=conf, iou_thres=iou)
 
         ann_img, detections = result[0]
-
-        print(result)
 
         return {'detections': detections.tolist()}
 
