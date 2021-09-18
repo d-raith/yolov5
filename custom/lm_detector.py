@@ -111,6 +111,8 @@ class LmDetector():
             if self.classify:
                 pred = apply_classifier(pred, self.modelc, img, imgs)
 
+
+
             # Process detections
             for i, det in enumerate(pred):  # detections per image
 
@@ -132,7 +134,7 @@ class LmDetector():
 
                 # Print time (inference + NMS)
                 print(f'{s}Done. ({t2 - t1:.3f}s)')
-                results.append((img0.squeeze(), det.numpy()))
+                results.append((img0.squeeze(), det.cpu().numpy()))
 
             return results
 
