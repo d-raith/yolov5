@@ -1,0 +1,1 @@
+t=labmaite/yolov5:latest && sudo docker build -t $t . && docker push localhost:5000/$t
