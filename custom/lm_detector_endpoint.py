@@ -6,10 +6,7 @@ from uuid import uuid4
 from PIL import Image
 from flask import Flask, request
 from flask_restful import Resource, Api
-from minio import Minio
-from minio.commonconfig import GOVERNANCE
-from minio.helpers import ObjectWriteResult
-from minio.retention import Retention
+
 
 from custom.lm_detector import LmDetector
 
@@ -27,6 +24,10 @@ MINIO_SECRET = os.getenv("MINIO_SECRET") or "testtest"
 MINIO_SECURE = os.getenv("MINIO_SECURE") or False
 MINIO_BASE_BUCKET = os.getenv("MINIO_BASE_BUCKET") or "lock-test"
 if USE_MINIO:
+    from minio import Minio
+    from minio.commonconfig import GOVERNANCE
+    from minio.helpers import ObjectWriteResult
+    from minio.retention import Retention
     minio_client = Minio(MINIO_ENDPOINT, MINIO_USER, MINIO_SECRET, secure=MINIO_SECURE)
     base_exists = minio_client.bucket_exists(MINIO_BASE_BUCKET)
     if not base_exists:
