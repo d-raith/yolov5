@@ -89,10 +89,10 @@ class Annotator:
             cv2.rectangle(self.im, c1, c2, color, thickness=self.lw, lineType=cv2.LINE_AA)
             if label:
                 tf = max(self.lw - 1, 1)  # font thickness
-                w, h = cv2.getTextSize(label, 0, fontScale=self.lw / 3, thickness=tf)[0]
+                w, h = cv2.getTextSize(label, 0, fontScale=self.lw / 6, thickness=tf)[0]
                 c2 = c1[0] + w, c1[1] - h - 3
-                cv2.rectangle(self.im, c1, c2, color, -1, cv2.LINE_AA)  # filled
-                cv2.putText(self.im, label, (c1[0], c1[1] - 2), 0, self.lw / 3, txt_color, thickness=tf,
+                cv2.rectangle(self.im, c1, c2, color, 1, cv2.LINE_AA)  # filled
+                cv2.putText(self.im, label, (c1[0], c1[1] - 2), 0, self.lw / 6, txt_color, thickness=tf,
                             lineType=cv2.LINE_AA)
 
     def rectangle(self, xy, fill=None, outline=None, width=1):
