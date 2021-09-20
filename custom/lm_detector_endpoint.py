@@ -18,19 +18,21 @@ api = Api(app)
 
 import numpy as np
 
+USE_MINIO = os.getenv("USE_MINIO", False)
+
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT") or "localhost:9000"
 
 MINIO_USER = os.getenv("MINIO_USER") or "test"
 MINIO_SECRET = os.getenv("MINIO_SECRET") or "testtest"
 MINIO_SECURE = os.getenv("MINIO_SECURE") or False
 MINIO_BASE_BUCKET = os.getenv("MINIO_BASE_BUCKET") or "lock-test"
-
-minio_client = Minio(MINIO_ENDPOINT, MINIO_USER, MINIO_SECRET, secure=MINIO_SECURE)
-base_exists = minio_client.bucket_exists(MINIO_BASE_BUCKET)
-if not base_exists:
-    minio_client.make_bucket(MINIO_BASE_BUCKET, object_lock=True)
-# verify connection
-[print("found bucket:", b.name) for b in minio_client.list_buckets()]
+if USE_MINIO:
+    minio_client = Minio(MINIO_ENDPOINT, MINIO_USER, MINIO_SECRET, secure=MINIO_SECURE)
+    base_exists = minio_client.bucket_exists(MINIO_BASE_BUCKET)
+    if not base_exists:
+        minio_client.make_bucket(MINIO_BASE_BUCKET, object_lock=True)
+    # verify connection
+    [print("found bucket:", b.name) for b in minio_client.list_buckets()]
 
 MINIO_URL = "https://" if MINIO_SECURE else "http://" + MINIO_ENDPOINT
 
@@ -96,7 +98,6 @@ def store_analysis_result(source_image, ann_image, device_id):
 # matplotlib.use("MacOSX")
 class UploadImage(Resource):
     def post(self, device_id):
-        print("device id", device_id)
 
         file = Image.open(request.files['image'])
 
@@ -119,13 +120,15 @@ class UploadImage(Resource):
         result = detector.detect([image], conf_th=conf, iou_thres=iou)
         # result = None
         ann_img, detections = result[0]
-        img_path, ann_img_path = store_analysis_result(image, ann_img, device_id)
 
 
-        return {'detections': detections.tolist(),
-                'image_urls': {
-                    'source': img_path, 'ann_img': ann_img_path
-                }}
+        if USE_MINIO:
+            img_path, ann_img_path = store_analysis_result(image, ann_img, device_id)
+            return {'detections': detections.tolist(),
+                    'image_urls': {
+                        'source': img_path, 'ann_img': ann_img_path
+                    }}
+        return {'detections': detections.tolist()}
 
 
 class TestEndpoint(Resource):
