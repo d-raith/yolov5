@@ -10,8 +10,9 @@ from models.experimental import attempt_load
 from utils.datasets import letterbox
 from utils.general import check_img_size, check_requirements, non_max_suppression, apply_classifier, \
     scale_coords, set_logging
-from utils.plots import plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized
+from utils.plots import Annotator
+
+from utils.torch_utils import select_device, load_classifier, time_sync
 
 print(np.__version__)
 weight_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "best-yolo-v1-3k.pt")
@@ -69,7 +70,8 @@ class LmDetector():
         self.classify = False
         if self.classify:
             self.modelc = load_classifier(name='resnet101', n=2)  # initialize
-            self.modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=self.device)['model']).to(self.device).eval()
+            self.modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=self.device)['model']).to(
+                self.device).eval()
 
         self.names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
         self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in self.names]
@@ -99,20 +101,19 @@ class LmDetector():
                 img = img.unsqueeze(0)
 
             # Inference
-            t1 = time_synchronized()
+            t1 = time_sync()
             pred = self.model(img, augment=False)[0]
 
             # Apply NMS
             pred = non_max_suppression(pred, conf_th, iou_thres, classes=self.args.classes,
                                        agnostic=self.args.agnostic_nms, max_det=3000)
-            t2 = time_synchronized()
+            t2 = time_sync()
 
             # Apply Classifier
             if self.classify:
                 pred = apply_classifier(pred, self.modelc, img, imgs)
 
-
-
+            annotator = Annotator(img0, line_width=1, pil=True)
             # Process detections
             for i, det in enumerate(pred):  # detections per image
 
@@ -130,10 +131,13 @@ class LmDetector():
                     # Write results
                     for *xyxy, conf, cls in reversed(det):
                         label = f'{self.names[int(cls)]} {conf:.2f}'
-                        plot_one_box(xyxy, im=img0, label=label if cls != 0 else None, color=self.colors[int(cls)], line_thickness=2)
+                        print(self.colors[int(cls)])
+                        annotator.box_label(xyxy, label, color=tuple(self.colors[int(cls)]))
+                        # plot_one_box(xyxy, im=img0, label=label if cls != 0 else None, color=self.colors[int(cls)], line_thickness=2)
 
                 # Print time (inference + NMS)
                 print(f'{s}Done. ({t2 - t1:.3f}s)')
+                img0 = annotator.result()
                 results.append((img0.squeeze(), det.cpu().numpy()))
 
             return results
