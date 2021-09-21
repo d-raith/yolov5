@@ -11,7 +11,6 @@ from utils.datasets import letterbox
 from utils.general import check_img_size, check_requirements, non_max_suppression, apply_classifier, \
     scale_coords, set_logging
 from utils.plots import Annotator
-
 from utils.torch_utils import select_device, load_classifier, time_sync
 
 print(np.__version__)
@@ -74,7 +73,9 @@ class LmDetector():
                 self.device).eval()
 
         self.names = self.model.module.names if hasattr(self.model, 'module') else self.model.names
-        self.colors = [[random.randint(0, 255) for _ in range(3)] for _ in self.names]
+
+        # bg, cell, bud
+        self.colors = [[0, 0, 0], [255, 0, 0], [0, 255, 0]] + [[random.randint(0, 255) for _ in range(3)] for _ in self.names]
 
     def _run_detection(self, imgs, conf_th=0.45, iou_thres=0.45, bbox_color=(0, 230, 255)):
 
@@ -113,7 +114,7 @@ class LmDetector():
             if self.classify:
                 pred = apply_classifier(pred, self.modelc, img, imgs)
 
-            annotator = Annotator(img0, line_width=1, pil=True)
+            annotator = Annotator(img0, line_width=2, pil=False)
             # Process detections
             for i, det in enumerate(pred):  # detections per image
 
@@ -131,7 +132,7 @@ class LmDetector():
                     # Write results
                     for *xyxy, conf, cls in reversed(det):
                         label = f'{self.names[int(cls)]} {conf:.2f}'
-                        print(self.colors[int(cls)])
+
                         annotator.box_label(xyxy, label, color=tuple(self.colors[int(cls)]))
                         # plot_one_box(xyxy, im=img0, label=label if cls != 0 else None, color=self.colors[int(cls)], line_thickness=2)
 

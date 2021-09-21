@@ -121,7 +121,7 @@ class UploadImage(Resource):
         result = detector.detect([image], conf_th=conf, iou_thres=iou)
         # result = None
         ann_img, detections = result[0]
-
+        #Image.fromarray(ann_img).save("./test.png", format="png")
 
         if USE_MINIO:
             img_path, ann_img_path = store_analysis_result(image, ann_img, device_id)
