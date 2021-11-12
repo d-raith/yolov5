@@ -26,6 +26,7 @@ ENV PYTHONPATH=/usr/src/app
 # Set environment variables
 ENV HOME=/usr/src/app
 
+RUN rm -rf /usr/src/app/custom/y-overfit/
 
 # Usage Examples -------------------------------------------------------------------------------------------------------
 

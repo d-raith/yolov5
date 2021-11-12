@@ -1,0 +1,1 @@
+t=localhost:5000/labmaite/yolov5:1.0.0 && docker build -t $t . && docker push $t

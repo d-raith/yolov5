@@ -22,7 +22,8 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT") or "localhost:9000"
 MINIO_USER = os.getenv("MINIO_USER") or "test"
 MINIO_SECRET = os.getenv("MINIO_SECRET") or "testtest"
 MINIO_SECURE = os.getenv("MINIO_SECURE") or False
-MINIO_BASE_BUCKET = os.getenv("MINIO_BASE_BUCKET") or "lock-test"
+MINIO_USE_OBJECT_LOCK = os.getenv("MINIO_SECURE", 0) == 1
+MINIO_BASE_BUCKET = os.getenv("MINIO_BASE_BUCKET")
 if USE_MINIO:
     from minio import Minio
     from minio.commonconfig import GOVERNANCE
@@ -31,7 +32,7 @@ if USE_MINIO:
     minio_client = Minio(MINIO_ENDPOINT, MINIO_USER, MINIO_SECRET, secure=MINIO_SECURE)
     base_exists = minio_client.bucket_exists(MINIO_BASE_BUCKET)
     if not base_exists:
-        minio_client.make_bucket(MINIO_BASE_BUCKET, object_lock=True)
+        minio_client.make_bucket(MINIO_BASE_BUCKET, object_lock=MINIO_USE_OBJECT_LOCK)
     # verify connection
     [print("found bucket:", b.name) for b in minio_client.list_buckets()]
 
@@ -45,6 +46,7 @@ def split_filename_extension(file_path):
 
 detector = LmDetector()
 
+print("Object locking enabled:", MINIO_USE_OBJECT_LOCK)
 
 def get_image_stream(np_img, img_format):
     img = Image.fromarray(np_img).convert('RGB')
@@ -76,8 +78,8 @@ def store_image(img, img_id_fname: str, object_prefix, img_format="png"):
     retention = Retention(GOVERNANCE, date)
 
     resp: ObjectWriteResult = minio_client.put_object(MINIO_BASE_BUCKET, object_id, stream, byte_count,
-                                                      content_type=f"image/{img_format}", legal_hold=True,
-                                                      retention=retention)
+                                                      content_type=f"image/{img_format}", legal_hold=MINIO_USE_OBJECT_LOCK,
+                                                      retention=retention if MINIO_USE_OBJECT_LOCK else None)
 
     object_path = MINIO_BASE_BUCKET + "/" + object_id
 
