@@ -12,9 +12,8 @@ import torch
 from numpy import random
 from tqdm import tqdm
 
-from custom.lm_detector_endpoint import split_filename_extension
 from models.experimental import attempt_load
-from remote_api.filesystem_utils import get_batch_iterator
+from custom.filesystem_utils import get_batch_iterator, split_filename_extension
 from remote_api.folder import Folder
 from utils.datasets import letterbox
 from utils.general import check_img_size, non_max_suppression, apply_classifier, \
@@ -23,12 +22,12 @@ from utils.plots import Annotator
 from utils.torch_utils import select_device, load_classifier, time_sync
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-weight_path = os.path.join(THIS_DIR, "best-yolo-v1-3k.pt")
+WEIGHT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 @dataclass
 class YoloParams:
-    yolo_weights: str = weight_path
+    yolo_weights: str = "best-yolo-v1-3k.pt"
     augment: bool = False
     classes: int = 1
     agnostic_nms: bool = False
@@ -37,6 +36,10 @@ class YoloParams:
     conf: float = 0.4
     max_detections = 3000
     classify = False
+
+    def load_weights(self, device="cpu"):
+        path = os.path.join(WEIGHT_DIR, self.yolo_weights)
+        return attempt_load(weights=path, map_location=device)
 
     def properties(self):
         return self.__dict__.items()
@@ -144,7 +147,7 @@ class Yolo5:
         self.half = self.device.type != 'cpu'  # half precision only supported on CUDA
 
         # Load model
-        self.model = attempt_load(self.params.yolo_weights, map_location=self.device)  # load FP32 model
+        self.model = self.params.load_weights(self.device)  # load FP32 model
         self.stride = int(self.model.stride.max())  # model stride
         imgsz = check_img_size(self.params.imgsz, s=self.stride)  # check img_size
         if self.half:

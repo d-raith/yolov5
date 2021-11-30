@@ -7,6 +7,8 @@ import warnings
 from threading import Thread
 
 import torch
+from PIL.Image import Image
+
 
 
 from utils.general import colorstr, emojis
