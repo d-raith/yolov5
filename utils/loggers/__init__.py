@@ -13,6 +13,7 @@ from utils.general import colorstr, emojis
 from utils.loggers.wandb.wandb_utils import WandbLogger
 from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
+from torch.utils.tensorboard import SummaryWriter
 
 LOGGERS = ('csv', 'wandb')  # text-file, TensorBoard, Weights & Biases
 
@@ -50,7 +51,7 @@ class Loggers():
         # TensorBoard
         s = self.save_dir
         if 'tb' in self.include and not self.opt.evolve:
-            from torch.utils.tensorboard import SummaryWriter
+
             prefix = colorstr('TensorBoard: ')
             self.logger.info(f"{prefix}Start with 'tensorboard --logdir {s.parent}', view at http://localhost:6006/")
             self.tb = SummaryWriter(str(s))
