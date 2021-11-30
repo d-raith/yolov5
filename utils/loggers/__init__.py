@@ -15,7 +15,7 @@ from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
 from torch.utils.tensorboard import SummaryWriter
 
-LOGGERS = ('csv', 'wandb')  # text-file, TensorBoard, Weights & Biases
+LOGGERS = ('csv', 'tb' ,'wandb')  # text-file, TensorBoard, Weights & Biases
 
 try:
     import wandb
