@@ -12,8 +12,8 @@ import torch
 from numpy import random
 from tqdm import tqdm
 
-from models.experimental import attempt_load
 from custom.filesystem_utils import get_batch_iterator, split_filename_extension
+from models.experimental import attempt_load
 from remote_api.folder import Folder
 from utils.datasets import letterbox
 from utils.general import check_img_size, non_max_suppression, apply_classifier, \
@@ -34,7 +34,7 @@ class YoloParams:
     imgsz: int = 640
     iou: float = 0.25
     conf: float = 0.4
-    max_detections = 3000
+    max_detections = 30000
     classify = False
 
     def load_weights(self, device="cpu"):
@@ -151,7 +151,7 @@ class Yolo5:
         # Load model
         self.model = self.params.load_weights(self.device)  # load FP32 model
         self.stride = int(self.model.stride.max())  # model stride
-        imgsz = check_img_size(self.params.imgsz, s=self.stride)  # check img_size
+        self.imgsz = check_img_size(self.params.imgsz, s=self.stride)  # check img_size
         if self.half:
             self.model.half()  # to FP16
         if self.params.classify:
@@ -182,9 +182,9 @@ class Yolo5:
 
         return pred
 
-    def _process_input_image(self, img):
-
-        img = letterbox(img, (self.params.imgsz, self.params.imgsz), stride=32)[0]
+    def _process_input_image(self, img, apply_letterbox=True):
+        if apply_letterbox:
+            img = letterbox(img, (self.params.imgsz, self.params.imgsz), stride=self.stride)[0]
         if img.shape[2] <= 10:
             img = img.transpose((2, 0, 1))
         # Convert
@@ -198,14 +198,16 @@ class Yolo5:
             img = img.unsqueeze(0)
         return img
 
-    def get_detections(self, images, paths=None) -> List[Yolo5Result]:
+    def get_detections(self, images, paths=None, pre_process=True) -> List[Yolo5Result]:
 
         paths = paths or [None] * len(images)
 
         # Padded resize
 
         results = []
-        imgs = [self._process_input_image(image).squeeze() for image in images]
+
+        imgs = [self._process_input_image(image, apply_letterbox=pre_process).squeeze() for image in images]
+
         imgs = torch.stack(imgs)
         print(imgs.shape)
 
@@ -228,8 +230,8 @@ class YoloDetector:
     def __init__(self, params: YoloParams):
         self.yolo = Yolo5(params)
 
-    def detect_images(self, *images):
-        results = self.yolo.get_detections(list(images))
+    def detect_images(self, *images, pre_process=True):
+        results = self.yolo.get_detections(list(images), pre_process=pre_process)
         if len(images) == 1:
             return results[0]
         return results
