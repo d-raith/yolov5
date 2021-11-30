@@ -1,36 +1,39 @@
-import argparse
-import itertools
 import os
+import shutil
 from dataclasses import dataclass
-from itertools import permutations
+from datetime import datetime
+from random import shuffle
+from typing import List
 
 import cv2
 import numpy as np
+import pandas as pd
 import torch
-from PIL import Image
 from numpy import random
 from tqdm import tqdm
 
+from custom.lm_detector_endpoint import split_filename_extension
 from models.experimental import attempt_load
-from utils.datasets import letterbox, LoadImages
-from utils.general import check_img_size, check_requirements, non_max_suppression, apply_classifier, \
-    scale_coords, set_logging, xyxy2xywh
+from remote_api.filesystem_utils import get_batch_iterator
+from remote_api.folder import Folder
+from utils.datasets import letterbox
+from utils.general import check_img_size, non_max_suppression, apply_classifier, \
+    scale_coords, set_logging, xyxy2xywh, xywh2xyxy
 from utils.plots import Annotator
 from utils.torch_utils import select_device, load_classifier, time_sync
-import pandas as pd
 
-print(np.__version__)
-weight_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "best-yolo-v1-3k.pt")
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+weight_path = os.path.join(THIS_DIR, "best-yolo-v1-3k.pt")
 
 
 @dataclass
 class YoloParams:
-    yolo_weights: str = "best-yolo-v1-3k.pt"
+    yolo_weights: str = weight_path
     augment: bool = False
     classes: int = 1
     agnostic_nms: bool = False
     imgsz: int = 640
-    iou: float = 0.6
+    iou: float = 0.25
     conf: float = 0.4
     max_detections = 3000
     classify = False
@@ -44,6 +47,89 @@ class YoloParams:
     @staticmethod
     def from_df(row):
         return YoloParams(**row.to_dict(orient="records")[0])
+
+
+@dataclass
+class Yolo5Result:
+    img_path: str
+    img_source: np.ndarray
+
+    detections: np.ndarray
+    params: YoloParams
+    _annotated = False
+
+    @property
+    def file_name(self):
+        return split_filename_extension(self.img_path)[0]
+
+    @property
+    def file_extension(self):
+        return split_filename_extension(self.img_path)[1]
+
+    def annotate(self, colors=[(200, 0, 0), ], names=['cell'], line_width=2, font_size=40, font='Arial.ttf', show_class=False,
+                 conf_based_color=True):
+        ann = Annotator(self.img_source, line_width, font_size, font)
+
+        def get_color(cnf):
+            if conf_based_color:
+                if cnf - self.params.conf < 0.1:
+                    return 200, 0, 0
+                if cnf - self.params.conf < 0.25:
+                    return 120, 120, 0
+                return 0, 200, 0
+
+        for idx, row in self.get_label_df(normalize=False, include_conf=True).iterrows():
+            xyxy = xywh2xyxy(torch.tensor(row[['x', 'y', 'w', 'h']].values).view(1, 4)).squeeze().tolist()
+            conf, cls = row.conf, row.cls
+
+            name, color = names[int(cls) - 1], get_color(conf)
+            if show_class:
+                label = f'{name} {conf:.2f}'
+            else:
+                label = f'{conf:.2f}'
+
+            ann.box_label(xyxy, label, color=tuple(color))
+
+        return ann.result()
+
+    def get_label_df(self, normalize=True, ignore_timestamp_area=True, include_conf=False):
+
+        data = []
+
+        for *xyxy, conf, cls in reversed(self.detections):
+            xywh = xyxy2xywh(torch.tensor(xyxy).view(1, 4))
+
+            if normalize:
+                gn = torch.tensor(self.img_source.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                xywh = (xywh / gn).view(-1)  # normalized xywh
+
+            x, y, w, h = xywh.squeeze().tolist()
+
+            img_h, img_w = self.img_source.shape[:2] if not normalize else (1, 1)
+            if ignore_timestamp_area and x <= 0.3 * img_w and y <= 0.1 * img_h:
+                continue
+
+            data.append(dict(cls=int(cls), x=x, y=y, w=w, h=h, conf=conf))
+        data = pd.DataFrame(data)
+        if include_conf:
+            return data
+
+        else:
+            return data.drop("conf", axis=1)
+
+    def plot_result(self, ax=None):
+        if ax is None:
+            import matplotlib.pyplot as plt
+            ax = plt.gca()
+        ax.imshow(self.annotate())
+        ax.axis("off")
+
+    def side_by_side(self, axis):
+        axis[0].imshow(self.img_source), axis[1].imshow(self.annotate())
+        axis[0].axis("off")
+        axis[1].axis("off")
+        axis[0].autoscale(enable=True, tight=True)
+        axis[1].autoscale(enable=True, tight=True)
 
 
 class Yolo5:
@@ -107,102 +193,144 @@ class Yolo5:
             img = img.unsqueeze(0)
         return img
 
-    def get_detections(self, images):
+    def get_detections(self, images, paths=None) -> List[Yolo5Result]:
 
-        img0 = images.copy()
+        paths = paths or [None] * len(images)
 
         # Padded resize
 
+        results = []
         imgs = [self._process_input_image(image).squeeze() for image in images]
         imgs = torch.stack(imgs)
+        print(imgs.shape)
 
         predictions = self._inference_step(imgs)
 
-        dets = []
         for i, det in enumerate(predictions):
             # gn = torch.tensor(img.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], img0[i].shape).round()
-                dets.append(det.cpu())
 
-        return list(zip(img0, dets))
+                det[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
 
-    def annotate(self, image, detections):
-        annotator = Annotator(image, line_width=2, pil=False)
-        for *xyxy, conf, cls in reversed(detections):
-            label = f'{self.names[int(cls)]} {conf:.2f}'
+            result = Yolo5Result(paths[i], images[i], det.cpu().numpy(), self.params)
+            results.append(result)
 
-            annotator.box_label(xyxy, label, color=tuple(self.colors[int(cls)]))
-        return annotator
-
-    def write_label_csv(self, im0_shape, det, file):
-        gn = torch.tensor(im0_shape)[[1, 0, 1, 0]]  # normalization gain whwh
-        with open(file, 'a') as f:
-            for *xyxy, conf, cls in reversed(det):
-                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                line = (cls, *xywh)  # label format
-                f.write(('%g ' * len(line)).rstrip() % line + '\n')
+        return results
 
 
-class YoloDetector():
+class YoloDetector:
     def __init__(self, params: YoloParams):
         self.yolo = Yolo5(params)
 
-    def _run_detection(self, paths):
+    def detect_images(self, *images):
+        results = self.yolo.get_detections(list(images))
+        if len(images) == 1:
+            return results[0]
+        return results
+
+    def detect_paths(self, img_paths):
         imgs = []
-
-        for idx, path in enumerate(paths):
+        for idx, path in enumerate(img_paths):
             img = cv2.imread(path)
-
+            if img is None:
+                raise ValueError(f"Failed to load image {path}")
             imgs.append(img)
-        detections = self.yolo.get_detections(imgs)
-        return detections
 
-    def detect(self, imgs):
-        img_results = self._run_detection(imgs)
-        annotations = [self.yolo.annotate(img, det) for img, det in img_results]
-        return img_results, annotations
+        img_results = self.yolo.get_detections(imgs, paths=img_paths)
+        if len(imgs) == 1:
+            return img_results[0]
+        return img_results
+
+
+def generate_labels(yolo: YoloDetector, paths, output_dir=f"{THIS_DIR}/label_output", cls_names=['cell']):
+    out = Folder(output_dir)
+    assert out.exists(), f"Path {output_dir} does not exist"
+    day_id = datetime.now().strftime('%Y%m%d')
+    out = out.make_sub_folder(day_id)
+
+    num_train = int(np.floor(len(paths) * 0.7))
+
+    shuffle(paths)
+
+    train = paths[:num_train]
+    valid = paths[num_train:]
+
+    print(f"Processing {len(paths)} files ({len(train)} train, {len(valid)} valid)")
+
+    out_train = out.make_sub_folder("train")
+    out_val = out.make_sub_folder("valid")
+    data_yml = "train: ../train/images" + "\n" \
+               + "val: ../valid/images" + "\n\n" \
+               + f"nc: {len(cls_names)}" + "\n" \
+               + f"names: {str(cls_names)}\n"
+
+    with open(out.get_file_path("data.yml"), "w") as f:
+        f.write(data_yml)
+
+    write = 0
+
+    batches_train = list(get_batch_iterator(train, 10))
+
+    for batch in tqdm(batches_train, desc="Processing training set"):
+        for res in yolo.detect_paths(batch):
+            fname = res.file_name
+
+            img_path = out_train.get_file_path(fname + res.file_extension)
+            csv_path = out_train.get_file_path(fname + ".txt")
+            shutil.copy(res.img_path, img_path)
+            res.get_label_df().to_csv(csv_path, sep=" ", header=False, index=False)
+            print(write, img_path)
+            write += 1
+
+    batches_valid = list(get_batch_iterator(valid, 10))
+    for batch in tqdm(batches_valid, desc="Processing validation set"):
+        for res in yolo.detect_paths(batch):
+            fname = res.file_name
+
+            img_path = out_val.get_file_path(fname + res.file_extension)
+            csv_path = out_val.get_file_path(fname + ".txt")
+            shutil.copy(res.img_path, img_path)
+            res.get_label_df().to_csv(csv_path, sep=" ", header=False, index=False)
 
 
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-    import matplotlib
-
-    matplotlib.use("TkAgg")
-
-    iou = [0.2, 0.4, 0.6, 0.8]
-    conf = [0.4, 0.5, 0.6]
-    augment = [True, False]
-
-    imgsz = [320, 480, 544, 640, 800]
-    data = list(itertools.product(iou, conf, augment, imgsz))
-    print(data)
-    params = [YoloParams(iou=d[0], conf=d[1], augment=d[2], imgsz=d[3]) for d in data]
-    print(params)
-    evaluations = []
-
-    detector = YoloDetector(YoloParams())
-    num_frames = 20
-    image_paths = [f"E:/hartmann_test_videos/1/frames/20211126_135600{i:02d}.jpg" for i in range(num_frames)]
-
-    for param in tqdm(params):
-        detector.yolo.params = param
-        results, annotations = detector.detect(image_paths)
-
-
-        detections = list(map(lambda r: len(r[1]), results))
-        mean_det = (sum(detections) / len(detections)) if len(detections) > 0 else 0
-        evaluations.append(
-            {**param.to_df().to_dict(orient="records")[0], 'det': mean_det, 'anns': annotations, 'r': results})
-
-    df = pd.DataFrame(evaluations)
-
-    data_df = df.drop(['r', 'anns', 'yolo_weights'], axis=1)
-
-    print(data_df.sort_values("det", ascending=False).head(50))
-
-    # img = df[df.iou == 0.2].anns.item()[0].result()
-
-    # plt.imshow(img)
-    # plt.show()
+    pass
+    # import matplotlib
+    #
+    # matplotlib.use("TkAgg")
+    #
+    # iou = [0.2, 0.4, 0.6, 0.8]
+    # conf = [0.4, 0.5, 0.6]
+    # augment = [True, False]
+    #
+    # imgsz = [320, 480, 544, 640, 800]
+    # data = list(itertools.product(iou, conf, augment, imgsz))
+    # print(data)
+    # params = [YoloParams(iou=d[0], conf=d[1], augment=d[2], imgsz=d[3]) for d in data]
+    # print(params)
+    # evaluations = []
+    #
+    # detector = YoloDetector(YoloParams())
+    # num_frames = 20
+    # image_paths = [f"E:/hartmann_test_videos/1/frames/20211126_135600{i:02d}.jpg" for i in range(num_frames)]
+    #
+    # for param in tqdm(params):
+    #     detector.yolo.params = param
+    #     results, annotations = detector.detect(image_paths)
+    #
+    #     detections = list(map(lambda r: len(r[1]), results))
+    #     mean_det = (sum(detections) / len(detections)) if len(detections) > 0 else 0
+    #     evaluations.append(
+    #         {**param.to_df().to_dict(orient="records")[0], 'det': mean_det, 'anns': annotations, 'r': results})
+    #
+    # df = pd.DataFrame(evaluations)
+    #
+    # data_df = df.drop(['r', 'anns', 'yolo_weights'], axis=1)
+    #
+    # print(data_df.sort_values("det", ascending=False).head(50))
+    #
+    # # img = df[df.iou == 0.2].anns.item()[0].result()
+    #
+    # # plt.imshow(img)
+    # # plt.show()

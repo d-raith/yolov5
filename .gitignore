@@ -9,7 +9,7 @@
 
 *.cfg
 !cfg/yolov3*.cfg
-
+label_output
 storage.googleapis.com
 runs/*
 data/*
