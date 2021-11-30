@@ -29,7 +29,7 @@ WEIGHT_DIR = os.path.dirname(os.path.abspath(__file__))
 class YoloParams:
     yolo_weights: str = "best-yolo-v1-3k.pt"
     augment: bool = False
-    classes: int = 1
+    classes: int = None
     agnostic_nms: bool = False
     imgsz: int = 640
     iou: float = 0.25
@@ -39,6 +39,8 @@ class YoloParams:
 
     def load_weights(self, device="cpu"):
         path = os.path.join(WEIGHT_DIR, self.yolo_weights)
+        if not os.path.exists(path):
+            raise ValueError(f"Unable to find file {path}")
         return attempt_load(weights=path, map_location=device)
 
     def properties(self):
