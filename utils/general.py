@@ -254,6 +254,8 @@ def check_requirements(requirements='requirements.txt', exclude=(), install=True
 
 def check_img_size(imgsz, s=32, floor=0):
     # Verify image size is a multiple of stride s in each dimension
+    if isinstance(imgsz, np.int64):
+        imgsz = int(imgsz)
     if isinstance(imgsz, int):  # integer i.e. img_size=640
         new_size = max(make_divisible(imgsz, int(s)), floor)
     else:  # list i.e. img_size=[640, 480]
