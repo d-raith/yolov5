@@ -7,14 +7,14 @@ import warnings
 from threading import Thread
 
 import torch
-from torch.utils.tensorboard import SummaryWriter
+
 
 from utils.general import colorstr, emojis
 from utils.loggers.wandb.wandb_utils import WandbLogger
 from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
 
-LOGGERS = ('csv', 'tb', 'wandb')  # text-file, TensorBoard, Weights & Biases
+LOGGERS = ('csv', 'wandb')  # text-file, TensorBoard, Weights & Biases
 
 try:
     import wandb
@@ -50,6 +50,7 @@ class Loggers():
         # TensorBoard
         s = self.save_dir
         if 'tb' in self.include and not self.opt.evolve:
+            from torch.utils.tensorboard import SummaryWriter
             prefix = colorstr('TensorBoard: ')
             self.logger.info(f"{prefix}Start with 'tensorboard --logdir {s.parent}', view at http://localhost:6006/")
             self.tb = SummaryWriter(str(s))
