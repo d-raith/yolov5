@@ -13,6 +13,8 @@ from numpy import random
 from tqdm import tqdm
 
 from custom.filesystem_utils import get_batch_iterator, split_filename_extension
+from deep_sort_pytorch.deep_sort import DeepSort
+from deep_sort_pytorch.utils.parser import get_config
 from models.experimental import attempt_load
 from remote_api.folder import Folder
 from utils.datasets import letterbox
@@ -67,11 +69,31 @@ class Yolo5Result:
     def file_name(self):
         return split_filename_extension(self.img_path)[0]
 
+    def get_bbox_images(self, cut = 5):
+        test = False
+        for row_id, row in self.get_label_df(normalize=False, include_conf=True).iterrows():
+            xyxy = xywh2xyxy(torch.tensor(row[['x', 'y', 'w', 'h']].values).view(1, 4)).squeeze().long().tolist()
+            # xyxy = xywh2xyxy(xywh)
+
+            if test:
+
+                img = self.img_source.copy()
+                img = cv2.rectangle(img, pt1=(xyxy[0], xyxy[1]), pt2=(xyxy[2], xyxy[3]), thickness=1, color=(255,0,0))
+                img = img[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
+            else:
+                img = self.img_source[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
+
+            if not img.shape[0] or not img.shape[1]:
+                continue
+
+            yield img
+
     @property
     def file_extension(self):
         return split_filename_extension(self.img_path)[1]
 
-    def annotate(self, colors=[(200, 0, 0), ], names=['cell'], line_width=2, font_size=40, font='Arial.ttf', show_class=False,
+    def annotate(self, colors=[(200, 0, 0), ], names=['cell'], line_width=2, font_size=40, font='Arial.ttf',
+                 show_class=False,
                  conf_based_color=True):
         ann = Annotator(self.img_source, line_width, font_size, font)
 
