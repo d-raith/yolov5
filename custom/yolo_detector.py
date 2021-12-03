@@ -209,7 +209,6 @@ class Yolo5:
         imgs = [self._process_input_image(image, apply_letterbox=pre_process).squeeze() for image in images]
 
         imgs = torch.stack(imgs)
-        print(imgs.shape)
 
         predictions = self._inference_step(imgs)
 
