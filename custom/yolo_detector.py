@@ -266,8 +266,6 @@ class YoloDetector:
             imgs.append(img)
 
         img_results = self.yolo.get_detections(imgs, paths=img_paths)
-        if len(imgs) == 1:
-            return img_results[0]
         return img_results
 
 
