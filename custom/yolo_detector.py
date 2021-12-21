@@ -61,7 +61,7 @@ class Yolo5Result:
     img_path: str
     img_source: np.ndarray
 
-    detections: np.ndarray
+    detections: np.ndarray  # xyxy
     params: YoloParams
     _annotated = False
 
@@ -69,7 +69,7 @@ class Yolo5Result:
     def file_name(self):
         return split_filename_extension(self.img_path)[0]
 
-    def get_bbox_images(self, cut = 5):
+    def get_bbox_images(self, cut=5):
         test = False
         for row_id, row in self.get_label_df(normalize=False, include_conf=True).iterrows():
             xyxy = xywh2xyxy(torch.tensor(row[['x', 'y', 'w', 'h']].values).view(1, 4)).squeeze().long().tolist()
@@ -78,7 +78,7 @@ class Yolo5Result:
             if test:
 
                 img = self.img_source.copy()
-                img = cv2.rectangle(img, pt1=(xyxy[0], xyxy[1]), pt2=(xyxy[2], xyxy[3]), thickness=1, color=(255,0,0))
+                img = cv2.rectangle(img, pt1=(xyxy[0], xyxy[1]), pt2=(xyxy[2], xyxy[3]), thickness=1, color=(255, 0, 0))
                 img = img[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
             else:
                 img = self.img_source[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
@@ -238,10 +238,12 @@ class Yolo5:
             # gn = torch.tensor(img.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
+                scaled_dets = det.clone()
+                scaled_dets[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
+                if any(scaled_dets[:, 0] == 0.) and any(scaled_dets[:, 2] == 0.):
+                    print(scaled_dets)
 
-                det[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
-
-            result = Yolo5Result(paths[i], images[i], det.cpu().numpy(), self.params)
+            result = Yolo5Result(paths[i], images[i], scaled_dets.cpu().numpy(), self.params)
             results.append(result)
 
         return results
