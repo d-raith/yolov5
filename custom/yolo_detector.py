@@ -61,7 +61,7 @@ class Yolo5Result:
     img_path: str
     img_source: np.ndarray
 
-    detections: np.ndarray
+    detections: np.ndarray  # xyxy
     params: YoloParams
     _annotated = False
 
@@ -69,7 +69,7 @@ class Yolo5Result:
     def file_name(self):
         return split_filename_extension(self.img_path)[0]
 
-    def get_bbox_images(self, cut = 5):
+    def get_bbox_images(self, cut=5):
         test = False
         for row_id, row in self.get_label_df(normalize=False, include_conf=True).iterrows():
             xyxy = xywh2xyxy(torch.tensor(row[['x', 'y', 'w', 'h']].values).view(1, 4)).squeeze().long().tolist()
@@ -78,7 +78,7 @@ class Yolo5Result:
             if test:
 
                 img = self.img_source.copy()
-                img = cv2.rectangle(img, pt1=(xyxy[0], xyxy[1]), pt2=(xyxy[2], xyxy[3]), thickness=1, color=(255,0,0))
+                img = cv2.rectangle(img, pt1=(xyxy[0], xyxy[1]), pt2=(xyxy[2], xyxy[3]), thickness=1, color=(255, 0, 0))
                 img = img[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
             else:
                 img = self.img_source[xyxy[1] - cut:xyxy[3] + cut, xyxy[0] - cut:xyxy[2] + cut, :].copy()
@@ -119,13 +119,19 @@ class Yolo5Result:
 
         return ann.result()
 
-    def get_label_df(self, normalize=True, ignore_timestamp_area=True, include_conf=False):
+    def get_label_df(self, normalize, ignore_timestamp_area=True, include_conf=False):
 
         data = []
+        det = torch.from_numpy(self.detections)
+        xywhs = xyxy2xywh(det[:, 0:4])
+        confs = det[:, 4]
+        clss = det[:, 5]
 
-        for *xyxy, conf, cls in reversed(self.detections):
-            xywh = xyxy2xywh(torch.tensor(xyxy).view(1, 4))
+        for i in range(det.shape[0]):
 
+            xywh = xywhs[i, :]
+            cls = int(clss[i])
+            conf = float(confs[i])
             if normalize:
                 gn = torch.tensor(self.img_source.shape)[[1, 0, 1, 0]]  # normalization gain whwh
                 xywh = (xywh / gn).view(-1)  # normalized xywh
@@ -143,6 +149,28 @@ class Yolo5Result:
 
         else:
             return data.drop("conf", axis=1)
+
+        # for *xyxy, conf, cls in reversed(self.detections):
+        #     #xywh = xyxy2xywh(torch.tensor(xyxy).view(1, 4))
+        #
+        #
+        #     if normalize:
+        #         gn = torch.tensor(self.img_source.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+        #         xywh = (xywh / gn).view(-1)  # normalized xywh
+        #
+        #     x, y, w, h = xywh.squeeze().tolist()
+        #
+        #     img_h, img_w = self.img_source.shape[:2] if not normalize else (1, 1)
+        #     if ignore_timestamp_area and x <= 0.3 * img_w and y <= 0.1 * img_h:
+        #         continue
+        #
+        #     data.append(dict(cls=int(cls), x=x, y=y, w=w, h=h, conf=conf))
+        # data = pd.DataFrame(data)
+        # if include_conf:
+        #     return data
+        #
+        # else:
+        #     return data.drop("conf", axis=1)
 
     def plot_result(self, ax=None):
         if ax is None:
@@ -238,10 +266,12 @@ class Yolo5:
             # gn = torch.tensor(img.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             if len(det):
                 # Rescale boxes from img_size to im0 size
+                scaled_dets = det.clone()
+                scaled_dets[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
+                if any(scaled_dets[:, 0] == 0.) and any(scaled_dets[:, 2] == 0.):
+                    print(scaled_dets)
 
-                det[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
-
-            result = Yolo5Result(paths[i], images[i], det.cpu().numpy(), self.params)
+            result = Yolo5Result(paths[i], images[i], scaled_dets.cpu().numpy(), self.params)
             results.append(result)
 
         return results
@@ -261,6 +291,7 @@ class YoloDetector:
         imgs = []
         for idx, path in enumerate(img_paths):
             img = cv2.imread(path)
+
             if img is None:
                 raise ValueError(f"Failed to load image {path}")
             imgs.append(img)
