@@ -11,56 +11,68 @@ import numpy as np
 
 from remote_api.folder import Folder
 from remote_api.loaders import VideoReader
+from settings import REPO_ROOT
 
 
-def detect(files, yolo_params: YoloParams):
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def detect(files, yolo_params: YoloParams, batch_size=500):
     detector = YoloDetector(yolo_params)
 
     cudnn.benchmark = True  # set True to speed up constant image size inference
 
-    results = []
+    batches = list(chunks(files, batch_size))
 
-    for file in tqdm(files, desc="Detecting..."):
-        image = np.asarray(Image.open(file))
-
-        result = detector.yolo.get_detections([image])[0]
-
-        result.img_path = file
-        results.append(result)
-
-    return results
+    for batch in batches:
+        yield detector.detect_paths(batch)
 
 
-def save_to_csv(results: List[Yolo5Result]):
-    pass
+def create_annotations(file_paths, output_dir: Folder, yolo_params: YoloParams, batch_size=750, write_images=True):
+    file_paths = sorted(file_paths, key=lambda f: int(f.split(os.path.sep)[-1].split(".")[0]))
+    frame_id = 0
+
+    for batch_result in tqdm(
+            detect(file_paths, yolo_params, batch_size=batch_size),
+            desc="Process batch",
+            total=int(len(file_paths) / batch_size) + 1, position=1):
+
+        for result in tqdm(batch_result, desc="Write batch", total=len(batch_result), position=0):
+            if write_images:
+                Image.fromarray(result.img_source).save(output_dir.get_file_path(f"{frame_id}.jpg"))
+            result.get_label_df(normalize=True).to_csv(output_dir.get_file_path(f"{frame_id}.txt"), sep=" ",
+                                                       header=False,
+                                                       index=False)
+
+            frame_id += 1
 
 
-def create_annotations(file_paths, output_dir: Folder, yolo_params: YoloParams):
-    detections = detect(file_paths, yolo_params)
-
-    for idx, result in tqdm(enumerate(detections)):
-        Image.fromarray(result.img_source).save(output_dir.get_file_path(f"{idx}.jpg"))
-        result.get_label_df().to_csv(output_dir.get_file_path(f"{idx}.txt"), sep=" ", header=False, index=False)
-
-
-
-def video_to_images(video_src, format="jpg", grayscale=False):
+def video_to_images(video_src, format="jpg", grayscale=False, out_folder=None):
     reader = VideoReader(video_src, auto_grayscale=grayscale)
-    out = Folder(video_src.split(".")[0] + "_images", create=True)
+    out = out_folder or Folder(video_src.split(".")[0] + "_images", create=True)
 
-    for idx, frame in tqdm(enumerate(reader)):
+    for idx, frame in tqdm(enumerate(reader), total=reader.efc()):
         Image.fromarray(frame).save(out.get_file_path(f"{idx}.{format}"))
-    return out.path()
+    return out
 
 
 if __name__ == '__main__':
-    # print(video_to_images("E:/repos/deepsort_2/laa-video-data/211215_111038_test_3s.mov"))
+    vid_folder = REPO_ROOT.get_parent().make_sub_folder("laa-video-data")
+    vid_file = vid_folder.get_file_path("211215_110858_test.avi")
+    import os
 
-    images_folder = Folder("E:/repos/deepsort_2/laa-video-data/211215_111038_test_3s_images")
+    if not os.path.exists(vid_file):
+        raise ValueError("File not found " + vid_file)
 
-    params = YoloParams(conf=0.65, augment=True, yolo_weights="configurations/laa/best.pt")
+    images_folder = vid_folder.make_sub_folder(vid_file.split(os.path.sep)[-1].split(".")[0] + "_frames")
 
-    annotation_folder = Folder("./output", create=True)
-    print(annotation_folder)
+    images_folder = video_to_images(vid_file, out_folder=images_folder)
 
-    create_annotations(images_folder.get_files(filter_extensions=['jpg']), annotation_folder, yolo_params=params)
+    params = YoloParams(conf=0.8, augment=False, yolo_weights="configurations/laa_high_fps/best.pt")
+
+    files = images_folder.get_files(filter_extensions=['jpg'])
+
+    create_annotations(files, images_folder, yolo_params=params, write_images=False)
