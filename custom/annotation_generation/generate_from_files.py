@@ -19,27 +19,21 @@ def natural_sort(l):
     alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
     return sorted(l, key=alphanum_key)
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
-def detect(files, yolo_params: YoloParams):
+
+def detect(files, yolo_params: YoloParams, batch_size=500):
     detector = YoloDetector(yolo_params)
 
     cudnn.benchmark = True  # set True to speed up constant image size inference
 
-    results = []
+    batches = list(chunks(files, batch_size))
 
-    for file in tqdm(files, desc="Detecting..."):
-        image = np.asarray(Image.open(file))
-
-        result = detector.yolo.get_detections([image])[0]
-
-        result.img_path = file
-        results.append(result)
-
-    return results
-
-
-def save_to_csv(results: List[Yolo5Result]):
-    pass
+    for batch in batches:
+        yield detector.detect_paths(batch)
 
 
 def create_annotations(file_paths, output_dir: Folder, yolo_params: YoloParams):
@@ -64,13 +58,13 @@ def label_sample_files(file_paths, output_dir: Folder, yolo_params: YoloParams):
                                                    index=False)
 
 
-def video_to_images(video_src, frame_folder_out=None, format="jpg", grayscale=False):
+def video_to_images(video_src, frame_folder_out=None, format="jpg", grayscale=False, out_folder=None):
     reader = VideoReader(video_src, auto_grayscale=grayscale)
     out = frame_folder_out or Folder(video_src.split(".")[0] + "_images", create=True)
 
-    for idx, frame in tqdm(enumerate(reader)):
+    for idx, frame in tqdm(enumerate(reader), total=reader.efc()):
         Image.fromarray(frame).save(out.get_file_path(f"{idx}.{format}"))
-    return out.path()
+    return out
 
 
 if __name__ == '__main__':

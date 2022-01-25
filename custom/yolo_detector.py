@@ -239,8 +239,10 @@ class Yolo5:
     def _process_input_image(self, img, apply_letterbox=True):
         if apply_letterbox:
             img = letterbox(img, (self.params.imgsz, self.params.imgsz), stride=self.stride)[0]
-        if img.shape[2] <= 10:
+        if len(img.shape) > 2 and img.shape[2] <= 10:
             img = img.transpose((2, 0, 1))
+        else:
+            img = img[None, :]
         # Convert
         # img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
@@ -297,6 +299,7 @@ class YoloDetector:
         imgs = []
         for idx, path in enumerate(img_paths):
             img = cv2.imread(path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
             if img is None:
                 raise ValueError(f"Failed to load image {path}")
