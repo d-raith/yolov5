@@ -427,7 +427,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     return results
 
 
-def parse_opt(known=False):
+def parse_opt(known=False, args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='yolov5s.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
@@ -465,7 +465,7 @@ def parse_opt(known=False):
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
     parser.add_argument('--freeze', type=int, default=0, help='Number of layers to freeze. backbone=10, all=24')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
-    opt = parser.parse_known_args()[0] if known else parser.parse_args()
+    opt = parser.parse_known_args(args=args)[0] if known else parser.parse_args(args=args)
     return opt
 
 

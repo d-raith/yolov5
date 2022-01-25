@@ -2,6 +2,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from random import shuffle
 from typing import List
 
@@ -40,7 +41,7 @@ class YoloParams:
     classify = False
 
     def load_weights(self, device="cpu"):
-        path = os.path.join(WEIGHT_DIR, self.yolo_weights)
+        path = os.path.join(WEIGHT_DIR, Path(self.yolo_weights))
         if not os.path.exists(path):
             raise ValueError(f"Unable to find file {path}")
         return attempt_load(weights=path, map_location=device)
@@ -143,7 +144,10 @@ class Yolo5Result:
                 continue
 
             data.append(dict(cls=int(cls), x=x, y=y, w=w, h=h, conf=conf))
-        data = pd.DataFrame(data)
+        if len(data):
+            data = pd.DataFrame(data)
+        else:
+            data = pd.DataFrame(data, columns=['cls', 'x', 'y', 'w', 'h', 'conf'])
         if include_conf:
             return data
 
@@ -270,6 +274,8 @@ class Yolo5:
                 scaled_dets[:, :4] = scale_coords(imgs.shape[2:], det[:, :4], images[i].shape).round()
                 if any(scaled_dets[:, 0] == 0.) and any(scaled_dets[:, 2] == 0.):
                     print(scaled_dets)
+            else:
+                scaled_dets = torch.empty_like(det)
 
             result = Yolo5Result(paths[i], images[i], scaled_dets.cpu().numpy(), self.params)
             results.append(result)
