@@ -18,6 +18,8 @@ def has_file_allowed_extension(filename, extensions):
 
 def split_filename_extension(file_path):
     name, ext = os.path.splitext(file_path)
+    ext = ext.replace(".", "")
+
     return os.path.basename(name), ext
 
 

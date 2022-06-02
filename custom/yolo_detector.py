@@ -34,7 +34,7 @@ class YoloParams:
     augment: bool = False
     classes: int = None
     agnostic_nms: bool = False
-    imgsz: int = 640
+    imgsz: int = 960
     iou: float = 0.25
     conf: float = 0.4
     max_detections = 30000
@@ -120,7 +120,7 @@ class Yolo5Result:
 
         return ann.result()
 
-    def get_label_df(self, normalize, ignore_timestamp_area=True, include_conf=False):
+    def get_label_df(self, normalize, ignore_timestamp_area=False, include_conf=False):
 
         data = []
         det = torch.from_numpy(self.detections)
