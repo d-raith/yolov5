@@ -119,6 +119,6 @@ if __name__ == '__main__':
     print(params)
     print(annotation_folder)
 
-    label_sample_files(src_file, 1, 22, annotation_folder, yolo_params=params, show_only=True)
+    label_sample_files(src_file, num_frames_per_sec=1, min_obj_width=22, output_dir=annotation_folder, yolo_params=params, show_only=True)
 
     # create_annotations(image_out_folder.get_files(filter_extensions=['jpg']), annotation_folder, yolo_params=params)

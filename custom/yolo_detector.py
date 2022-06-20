@@ -35,6 +35,7 @@ class YoloParams:
     classes: int = None
     agnostic_nms: bool = False
     imgsz: int = 960
+    # iou_threshold (float): discards all overlapping boxes with IoU > iou_threshold
     iou: float = 0.25
     conf: float = 0.4
     max_detections = 30000
