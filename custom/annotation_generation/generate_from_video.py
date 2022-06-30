@@ -1,4 +1,5 @@
 import glob
+import os.path
 import re
 import shutil
 from datetime import datetime
@@ -188,6 +189,7 @@ def create_dataset_folder(src_folders: List[Folder], output_folder: Folder):
     src_folders = [f for f in src_folders if f.name != "dataset"]
 
     train_folder = ds_folder.make_sub_folder("train")
+    debug = ds_folder.make_sub_folder("debug")
     images_folder = train_folder.make_sub_folder("images")
     labels_folder = train_folder.make_sub_folder("labels")
 
@@ -196,6 +198,7 @@ def create_dataset_folder(src_folders: List[Folder], output_folder: Folder):
     _ = valid_folder.make_sub_folder("labels")
 
     for folder in tqdm(src_folders, desc="Generating dataset"):
+        src_debug_folder = folder.make_sub_folder("debug", create=False)
 
         for image_path in folder.make_file_provider("jpg", abs_path=False):
             # TODO: Verify abs or rel path
@@ -204,6 +207,12 @@ def create_dataset_folder(src_folders: List[Folder], output_folder: Folder):
             try:
                 shutil.copy(folder.get_file(image_path), images_folder.get_file(prefix + "_" + image_path))
                 shutil.copy(folder.get_file(ann_path), labels_folder.get_file(prefix + "_" + ann_path))
+
+                if src_debug_folder.exists():
+                    print("Copy debug folder", src_debug_folder.path_abs)
+                    shutil.copy(src_debug_folder.get_file(image_path.replace(".jpg", "_ann.jpg")),
+                                debug.get_file(prefix + "_" + image_path))
+
             except Exception as e:
                 print(e)
 
@@ -226,7 +235,7 @@ def collect_from_dataset(video_storage_folder: Folder, output_folder: Folder, re
     if src_filter is not None:
         entries = list(filter(src_filter, entries))
 
-    params = YoloParams(conf=0.8, augment=True, iou=0.35, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
+    params = YoloParams(conf=0.5, augment=True, iou=0.35, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
     if regenerate_annotation:
         for idx, folder_name in enumerate(entries):
             print("Process ", idx + 1, "of", len(entries))
@@ -268,9 +277,9 @@ if __name__ == '__main__':
     dataset_folder = Folder("./output/datasets/220622_v1", create=True)
 
 
-    def folder_filter(folder): return "220601" in folder
+    def folder_filter(folder): return "220601_1235" in folder
 
 
-    collect_from_dataset(src_folder, output_folder=dataset_folder, src_filter=folder_filter, num_frames_per_second=0.1,
-                         start_offset=7 * 60,
+    collect_from_dataset(src_folder, output_folder=dataset_folder, src_filter=folder_filter, num_frames_per_second=0.05,
+                         start_offset=5 * 60,
                          regenerate_annotation=True)
