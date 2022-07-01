@@ -11,11 +11,20 @@
 custom/annotation_generation/output
 
 *.cfg
+!setup.cfg
 !cfg/yolov3*.cfg
 label_output
 storage.googleapis.com
 runs
 data/*
+<<<<<<< HEAD
+=======
+data/images/*
+!data/*.yaml
+!data/hyps
+!data/scripts
+!data/images
+>>>>>>> d94b4705a65e751a8238696704a6300df4ac33db
 !data/images/zidane.jpg
 !data/images/bus.jpg
 !data/coco.names
@@ -44,8 +53,17 @@ dataset
 *.weights
 #*.pt
 *.onnx
+*.engine
 *.mlmodel
 *.torchscript
+<<<<<<< HEAD
+=======
+*.tflite
+*.h5
+*_saved_model/
+*_web_model/
+*_openvino_model/
+>>>>>>> d94b4705a65e751a8238696704a6300df4ac33db
 darknet53.conv.74
 yolov3-tiny.conv.15
 
