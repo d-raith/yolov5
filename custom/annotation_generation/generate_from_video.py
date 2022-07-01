@@ -1,25 +1,16 @@
-import glob
-import os.path
+import re
 import re
 import shutil
-from datetime import datetime
 from typing import List
 
-import cv2
-import yaml
 from PIL import Image
-
 from torch.backends import cudnn
 from tqdm import tqdm
 
-from custom.annotation_generation.generate_from_files import video_to_images
-from custom.yolo_detector import YoloParams, YoloDetector, Yolo5Result
-
-import pandas as pd
-import numpy as np
-
+import parameters
+from custom.yolo_detector import YoloParams, YoloDetector
 from remote_api.folder import Folder
-from remote_api.video_utils import VideoReader, get_video_reader, draw_image_with_boxes
+from remote_api.video_utils import get_video_reader, draw_image_with_boxes
 from utils.general import xyxy2xywh
 
 
@@ -253,8 +244,9 @@ def collect_from_dataset(video_storage_folder: Folder, output_folder: Folder, re
 
 
 def collect_from_single_input():
-    src_file = "/home/raithd/data/streamlit_data/220601_125348_test-duv_treated/220601_125348_test-duv_treated.avi"
-
+    folder = Folder(parameters.Global.base_folder)
+    src_file = folder.make_sub_folder("220601_125348_test-duv_treated", create=False).get_file(
+        "220601_125348_test-duv_treated.mp4")
     image_out_folder = Folder(src_file.split(".")[0], create=True)
     annotation_folder = Folder("./output/samples", create=True)
 
@@ -271,13 +263,22 @@ def collect_from_single_input():
 
 
 if __name__ == '__main__':
-    src_folder = "/home/raithd/data/streamlit_data/"
+    src_folder = parameters.Global.base_folder
     src_folder = Folder(src_folder)
 
     dataset_folder = Folder("./output/datasets/220622_v1", create=True)
 
+    fnames = [
+        "104058",
+        "105049",
+        "105852",
+        "1142",
+        "1240"
+        "1216",
+        "1249",
+    ]
 
-    def folder_filter(folder): return "220601_1235" in folder
+    def folder_filter(folder): return any([f in folder for f in fnames])
 
 
     collect_from_dataset(src_folder, output_folder=dataset_folder, src_filter=folder_filter, num_frames_per_second=0.05,
