@@ -3,6 +3,7 @@ import re
 import shutil
 from typing import List
 
+import numpy as np
 from PIL import Image
 from torch.backends import cudnn
 from tqdm import tqdm
@@ -12,6 +13,18 @@ from custom.yolo_detector import YoloParams, YoloDetector
 from remote_api.folder import Folder
 from remote_api.video_utils import get_video_reader, draw_image_with_boxes
 from utils.general import xyxy2xywh
+
+
+def get_uniform(available, total, num_items):
+    skip = int(available / total)
+    output_frames = [skip * (1 + n) for n in range(num_items)]
+    return output_frames
+
+
+def get_geometric(available, total, num_items):
+    start = total - available
+    geo = np.geomspace(start, available, num=num_items, endpoint=False) / available
+    return (geo * available).astype(int)
 
 
 def natural_sort(l):
@@ -48,21 +61,26 @@ def create_annotations(file_paths, output_dir: Folder, yolo_params: YoloParams, 
                                                    index=False)
 
 
-def video_iter(video_file, num_frames_per_sec, start_offset, yolo_params: YoloParams):
+def video_iter(video_file, num_frames_per_source, start_offset, yolo_params: YoloParams, draw_fn=get_geometric):
     detector = YoloDetector(yolo_params)
 
     cudnn.benchmark = True
 
     reader = get_video_reader(video_file)
 
-    fps = reader.estimated_fps()
+    output_frames = None
+    if num_frames_per_source is not None:
+        total_frames = reader.efc()
+        available_frames = total_frames - start_offset
+        skip = int(available_frames / num_frames_per_source)
+        output_frames = draw_fn(available_frames, total_frames, num_frames_per_source)
+        print("frame time jump", f"{skip / reader.estimated_fps():.1f}")
 
-    skip = int(fps / num_frames_per_sec)
-
-    print("skip", skip, 'offset', start_offset)
+    print("frames", output_frames, 'offset', start_offset)
     for f_id, frame in tqdm(enumerate(reader), leave=False):
-        if f_id < start_offset or f_id % skip != 0:
+        if f_id < start_offset or output_frames is not None and f_id not in output_frames:
             continue
+        print("Process", f_id)
         result = detector.detect_images(frame)
         yield f_id, frame, result
 
@@ -160,9 +178,9 @@ def create_annotated_image(image, output_df):
     return im_out
 
 
-def create_annotations_for_file(video_file, num_frames_per_sec, start_offset, yolo_params: YoloParams, output_dir,
+def create_annotations_for_file(video_file, num_frames_per_src, start_offset, yolo_params: YoloParams, output_dir,
                                 fname_prefix=""):
-    for frame_id, image, yolo_result in video_iter(video_file, num_frames_per_sec, start_offset, yolo_params):
+    for frame_id, image, yolo_result in video_iter(video_file, num_frames_per_src, start_offset, yolo_params):
         img_file_name = f"{fname_prefix}{frame_id}.jpg"
 
         image_path = output_dir.get_file_path(img_file_name)
@@ -219,14 +237,14 @@ def create_dataset_folder(src_folders: List[Folder], output_folder: Folder):
         # yaml.dump(yaml_data, out, default_flow_style=None, sort_keys=False)
 
 
-def collect_from_dataset(video_storage_folder: Folder, output_folder: Folder, regenerate_annotation=True,
-                         src_filter=None, num_frames_per_second=0.1, start_offset=0):
+def collect_from_dataset(video_storage_folder: Folder, output_folder: Folder, params: YoloParams,
+                         regenerate_annotation=True,
+                         src_filter=None, num_frames_per_source=0.1, start_offset=0):
     entries = video_storage_folder.get_folders(abs_path=False, as_folder_obj=True)
 
     if src_filter is not None:
         entries = list(filter(src_filter, entries))
 
-    params = YoloParams(conf=0.5, augment=True, iou=0.35, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
     if regenerate_annotation:
         for idx, folder_name in enumerate(entries):
             print("Process ", idx + 1, "of", len(entries))
@@ -237,7 +255,7 @@ def collect_from_dataset(video_storage_folder: Folder, output_folder: Folder, re
 
             output_dir = output_folder.make_sub_folder(folder_name)
 
-            create_annotations_for_file(src_path, num_frames_per_second, start_offset, params, output_dir)
+            create_annotations_for_file(src_path, num_frames_per_source, start_offset, params, output_dir)
 
     folders = output_folder.get_folders(as_folder_obj=True)
     create_dataset_folder(src_folders=folders, output_folder=output_folder)
@@ -252,7 +270,7 @@ def collect_from_single_input():
 
     # video_to_images(src_file, frame_folder_out=image_out_folder)
 
-    params = YoloParams(conf=0.5, augment=True, iou=0.35, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
+    params = YoloParams(conf=0.55, augment=True, iou=0.15, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
     print(params)
     print(annotation_folder)
 
@@ -270,17 +288,23 @@ if __name__ == '__main__':
 
     fnames = [
         "104058",
-        "105049",
-        "105852",
-        "1142",
-        "1240"
-        "1216",
-        "1249",
+        "112300"
+        "114712",
+        "124003",
+        "125836",
+        "130312",
+
     ]
+
 
     def folder_filter(folder): return any([f in folder for f in fnames])
 
 
-    collect_from_dataset(src_folder, output_folder=dataset_folder, src_filter=folder_filter, num_frames_per_second=0.05,
-                         start_offset=5 * 60,
+    params = YoloParams(conf=0.5, augment=True, iou=0.25, yolo_weights="configurations/laa_960540_ofm_v1/best.pt")
+
+    collect_from_dataset(src_folder, output_folder=dataset_folder,
+                         src_filter=folder_filter,
+                         params=params,
+                         num_frames_per_source=5,
+                         start_offset=2 * 60,
                          regenerate_annotation=True)
